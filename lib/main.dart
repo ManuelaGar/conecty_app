@@ -1,10 +1,9 @@
-import 'package:app_settings/app_settings.dart';
-import 'package:connectivity/connectivity.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
-import 'package:provider/provider.dart';
+import 'dart:async';
 
-import 'connectivityChangeNotifier.dart';
+import 'package:connectivity/connectivity.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(MyApp());
@@ -13,73 +12,118 @@ void main() {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-        create: (context) {
-          ConnectivityChangeNotifier changeNotifier =
-              ConnectivityChangeNotifier();
-          changeNotifier.initialLoad();
-          return changeNotifier;
-        },
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'Network Connectivity',
-          theme: ThemeData(
-            primarySwatch: Colors.blue,
-            visualDensity: VisualDensity.adaptivePlatformDensity,
-          ),
-          home: MyHomePage(title: 'Network Connectivity'),
-        ));
+    return MaterialApp(
+      title: 'Flutter Demo',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: MyHomePage(title: 'Flutter Demo Home Page'),
+    );
   }
 }
 
-class MyHomePage extends StatelessWidget {
-  MyHomePage({this.title});
+class MyHomePage extends StatefulWidget {
+  MyHomePage({Key key, @required this.title}) : super(key: key);
+
   final String title;
+
+  @override
+  _MyHomePageState createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> {
+  String _connectionStatus = 'Unknown';
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<ConnectivityResult> _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    initConnectivity();
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  // Platform messages are asynchronous, so we initialize in an async method.
+  Future<void> initConnectivity() async {
+    ConnectivityResult result = ConnectivityResult.none;
+    // Platform messages may fail, so we use a try/catch PlatformException.
+    try {
+      result = await _connectivity.checkConnectivity();
+    } on PlatformException catch (e) {
+      print(e.toString());
+    }
+
+    // If the widget was removed from the tree while the asynchronous platform
+    // message was in flight, we want to discard the reply rather than calling
+    // setState to update our non-existent appearance.
+    if (!mounted) {
+      return Future.value(null);
+    }
+
+    return _updateConnectionStatus(result);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        brightness: Brightness.light,
+        title: const Text('Connectivity example app'),
       ),
       body: Center(
-        child: Consumer<ConnectivityChangeNotifier>(
-          builder: (BuildContext context,
-              ConnectivityChangeNotifier connectivityChangeNotifier,
-              Widget child) {
-            return Column(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                Flexible(
-                  child: SvgPicture.asset(connectivityChangeNotifier.svgUrl,
-                      fit: BoxFit.contain),
-                ),
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(30.0, 20, 30, 100),
-                    child: Text(
-                      connectivityChangeNotifier.pageText,
-                      textAlign: TextAlign.center,
+        child: _connectionStatus == 'ConnectivityResult.none'
+            ? AlertDialog(
+                title: Text('Error de conexión'),
+                content: Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.wifi_off,
+                      color: Colors.red,
                     ),
+                    SizedBox(
+                      width: 10.0,
+                    ),
+                    Expanded(
+                      child: Text(
+                          'Verifica tu acceso a internet e inténtalo de nuevo'),
+                    ),
+                  ],
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(
+                    Radius.circular(10.0),
                   ),
                 ),
-                if (connectivityChangeNotifier.connectivity !=
-                    ConnectivityResult.wifi)
-                  Flexible(
-                    child: ElevatedButton(
-                      child: Text('Open Settings'),
-                      onPressed: () => AppSettings.openAppSettings(),
-                    ),
-                  )
-              ],
-            );
-          },
-        ),
+                actions: <Widget>[
+                  TextButton(
+                    child: Text('Ok'),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              )
+            : Text('Conexión estable'),
       ),
     );
+  }
+
+  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
+    switch (result) {
+      case ConnectivityResult.wifi:
+      case ConnectivityResult.mobile:
+      case ConnectivityResult.none:
+        setState(() => _connectionStatus = result.toString());
+        break;
+      default:
+        setState(() => _connectionStatus = 'Failed to get connectivity.');
+        break;
+    }
   }
 }
